@@ -6,22 +6,21 @@ import (
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gorilla/mux"
 )
 
-type FiberRequest interface {
-	Request() any
-	AllParams() map[string]string
-	Path(override ...string) string
-	GetReqHeaders() map[string][]string
-	Queries() map[string][]string
-	Body() []byte
-}
+type FiberCtx = *fiber.Ctx
+type Request = *http.Request
 
 func ConvertHTTPRequestToAPIGatewayProxyRequest(ctx context.Context, request any) events.APIGatewayProxyRequest {
-	apiGatewayProxyRequest := events.APIGatewayProxyRequest{}
+	if request == nil {
+		panic("request is nil")
+	}
 
+	apiGatewayProxyRequest := events.APIGatewayProxyRequest{}
 	switch request := request.(type) {
-	case *http.Request:
+	case Request:
 		if request.Body != nil {
 			bodyBytes, err := io.ReadAll(request.Body)
 			if err != nil {
@@ -29,18 +28,32 @@ func ConvertHTTPRequestToAPIGatewayProxyRequest(ctx context.Context, request any
 			}
 			apiGatewayProxyRequest.Body = string(bodyBytes)
 		}
+
 		apiGatewayProxyRequest.Path = request.URL.Path
 		apiGatewayProxyRequest.HTTPMethod = request.Method
 		apiGatewayProxyRequest.MultiValueHeaders = request.Header
 		apiGatewayProxyRequest.MultiValueQueryStringParameters = request.URL.Query()
-	case FiberRequest:
-		apiGatewayProxyRequest.Body = string(request.Body())
-		apiGatewayProxyRequest.Path = request.Path()
-		apiGatewayProxyRequest.MultiValueHeaders = request.GetReqHeaders()
-		apiGatewayProxyRequest.MultiValueQueryStringParameters = request.Queries()
+		apiGatewayProxyRequest.PathParameters = mux.Vars(request)
+
+		return apiGatewayProxyRequest
+
+	case FiberCtx:
 		apiGatewayProxyRequest.PathParameters = request.AllParams()
-	default:
-		return events.APIGatewayProxyRequest{}
+		apiGatewayProxyRequest.Path = request.Path()
+		apiGatewayProxyRequest.HTTPMethod = request.Method()
+		apiGatewayProxyRequest.MultiValueHeaders = request.GetReqHeaders()
+		apiGatewayProxyRequest.MultiValueQueryStringParameters = make(map[string][]string)
+		request.Context().QueryArgs().VisitAll(func(key []byte, value []byte) {
+			if v, found := apiGatewayProxyRequest.MultiValueQueryStringParameters[string(key)]; found {
+				apiGatewayProxyRequest.MultiValueQueryStringParameters[string(key)] = append(v, string(value))
+			} else {
+				apiGatewayProxyRequest.MultiValueQueryStringParameters[string(key)] = []string{string(value)}
+			}
+		})
+
+		apiGatewayProxyRequest.Body = string(request.Body())
+
+		return apiGatewayProxyRequest
 	}
 
 	return apiGatewayProxyRequest
