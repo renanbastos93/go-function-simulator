@@ -23,11 +23,8 @@ $ go get github.com/yourusername/go-function-simulator
 package main
 
 import (
-	"context"
-	"fmt"
-	"github.com/aws/aws-lambda-go/events"
 	"github.com/gofiber/fiber/v2"
-	"github.com/yourusername/go-function-simulator/http"
+	"github.com/renanbastos93/go-function-simulator/pkg/http"
 )
 
 func main() {
@@ -35,31 +32,15 @@ func main() {
 
 	app.Get("/path/:id", func(c *fiber.Ctx) error {
 		apiGatewayProxyRequest := http.ConvertHTTPRequestToAPIGatewayProxyRequest(c.Context(), c)
-		fmt.Println("API Gateway Proxy Request:", apiGatewayProxyRequest)
+        fmt.Println("API Gateway Proxy Request:", apiGatewayProxyRequest)
+		// call your lambda function
+		// like this: usecase.Lambda(ctx, apiGatewayProxyRequest)
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	// Simulate a request
-	req := &http.Request{
-		Method: "GET",
-		URL: &url.URL{
-			Path:     "/path/123",
-			RawQuery: "query=value",
-		},
-		Header: http.Header{
-			"Content-Type": {"application/json"},
-		},
-		Body: io.NopCloser(bytes.NewReader([]byte(`{"foo":"bar"}`))),
-	}
-
-	resp, err := app.Test(req)
-	if err != nil {
-		fmt.Println("Error testing request:", err)
-		return
-	}
-
-	fmt.Println("Response Status Code:", resp.StatusCode)
+	_ = app.Listen(":3000")
 }
+
 ```
 
 ## Usage Gorilla Mux
@@ -69,29 +50,23 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"github.com/aws/aws-lambda-go/events"
+
+	stdHttp "net/http"
+
 	"github.com/gorilla/mux"
-	"github.com/yourusername/go-function-simulator/http"
+	"github.com/renanbastos93/go-function-simulator/pkg/http"
 )
 
 func main() {
 	r := mux.NewRouter()
-	r.HandleFunc("/path/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/path/{id}", func(w stdHttp.ResponseWriter, r *stdHttp.Request) {
 		apiGatewayProxyRequest := http.ConvertHTTPRequestToAPIGatewayProxyRequest(context.Background(), r)
 		fmt.Println("API Gateway Proxy Request:", apiGatewayProxyRequest)
-		w.WriteHeader(http.StatusOK)
+		/// call your lambda function
+		// like this: usecase.Lambda(ctx, apiGatewayProxyRequest)
+		w.WriteHeader(stdHttp.StatusOK)
 	})
 
-	req, err := http.NewRequest("GET", "/path/123?query=value", nil)
-	if err != nil {
-		fmt.Println("Error creating request:", err)
-		return
-	}
-
-	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, req)
-
-	fmt.Println("Response Status Code:", rr.Code)
+	_ = stdHttp.ListenAndServe(":3000", r)
 }
 ```
